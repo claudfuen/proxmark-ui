@@ -59,6 +59,7 @@ jobs:
       - name: Build self-contained app
         env:
           PM3_SRC: ${{ runner.temp }}/proxmark3
+          PM3_JOBS: 3
         run: ./scripts/make-app.sh release
 
       - name: Prepare and verify release assets
@@ -89,15 +90,28 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = v0.1.0
-          gh release create "$GITHUB_REF_NAME" \
-            dist/ProxmarkUI-v0.1.0-macos-arm64.zip \
-            dist/ProxmarkUI-v0.1.0-source.tar.gz \
-            dist/Iceman-proxmark3-693ead08038c-source.tar.gz \
-            dist/Iceman-proxmark3-693ead08038c.git.bundle \
-            dist/lz4-1.10.0-source.tar.gz \
-            dist/ProxmarkUI-LICENSE.txt \
-            dist/THIRD_PARTY_NOTICES.md \
-            dist/SOURCE_MANIFEST.md \
-            dist/SHA256SUMS.txt \
-            --verify-tag --title 'ProxmarkUI 0.1.0' \
-            --notes-file docs/RELEASE_NOTES.md --prerelease
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              dist/ProxmarkUI-v0.1.0-macos-arm64.zip \
+              dist/ProxmarkUI-v0.1.0-source.tar.gz \
+              dist/Iceman-proxmark3-693ead08038c-source.tar.gz \
+              dist/Iceman-proxmark3-693ead08038c.git.bundle \
+              dist/lz4-1.10.0-source.tar.gz \
+              dist/ProxmarkUI-LICENSE.txt \
+              dist/THIRD_PARTY_NOTICES.md \
+              dist/SOURCE_MANIFEST.md \
+              dist/SHA256SUMS.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/ProxmarkUI-v0.1.0-macos-arm64.zip \
+              dist/ProxmarkUI-v0.1.0-source.tar.gz \
+              dist/Iceman-proxmark3-693ead08038c-source.tar.gz \
+              dist/Iceman-proxmark3-693ead08038c.git.bundle \
+              dist/lz4-1.10.0-source.tar.gz \
+              dist/ProxmarkUI-LICENSE.txt \
+              dist/THIRD_PARTY_NOTICES.md \
+              dist/SOURCE_MANIFEST.md \
+              dist/SHA256SUMS.txt \
+              --verify-tag --title 'ProxmarkUI 0.1.0' \
+              --notes-file docs/RELEASE_NOTES.md --prerelease
+          fi

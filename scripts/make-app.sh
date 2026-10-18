@@ -13,6 +13,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
+PM3_JOBS="${PM3_JOBS:-8}"
+if [[ ! "$PM3_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "error: PM3_JOBS must be a positive integer." >&2
+    exit 1
+fi
 
 # Where the Iceman client and its data files live. Override with PM3_SRC if your
 # checkout is elsewhere.
@@ -71,7 +76,7 @@ EASY_OPTIONS=(
     SKIP_ICLASS=1 SKIP_SEOS=1 SKIP_FELICA=1 SKIP_NFCBARCODE=1
     SKIP_HFSNIFF=1 SKIP_HFPLOT=1
 )
-make -C "$PM3_SRC" recovery "${EASY_OPTIONS[@]}" -j 8
+make -C "$PM3_SRC" recovery "${EASY_OPTIONS[@]}" -j "$PM3_JOBS"
 verify_firmware PM3GENERIC
 EASY_DEFS="$(sed -n 's/^CACHED_PLATFORM_DEFS=//p' "$PM3_SRC/.Makefile.options.cache" | head -n 1)"
 for required in LED_ORDER_PM3EASY WITH_LF WITH_GENERAL_HF WITH_ISO14443a; do
@@ -89,7 +94,7 @@ mkdir -p "$PM3_FW_STAGE/PM3EASY"
 cp "$PM3_FW_SRC" "$PM3_FW_STAGE/PM3EASY/fullimage.elf"
 
 echo "==> Building matching Proxmark3 RDV4 firmware"
-make -C "$PM3_SRC" recovery PLATFORM_FILE=/dev/null PLATFORM=PM3RDV4 PLATFORM_EXTRAS= LED_ORDER= PLATFORM_SIZE=512 STANDALONE=LF_SAMYRUN -j 8
+make -C "$PM3_SRC" recovery PLATFORM_FILE=/dev/null PLATFORM=PM3RDV4 PLATFORM_EXTRAS= LED_ORDER= PLATFORM_SIZE=512 STANDALONE=LF_SAMYRUN -j "$PM3_JOBS"
 verify_firmware PM3RDV4
 RDV4_DEFS="$(sed -n 's/^CACHED_PLATFORM_DEFS=//p' "$PM3_SRC/.Makefile.options.cache" | head -n 1)"
 if [[ " $RDV4_DEFS " != *" -DRDV4 "* ]]; then
