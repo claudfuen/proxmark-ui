@@ -8,7 +8,8 @@ struct WriteView: View {
     @EnvironmentObject var app: AppModel
     var goToScan: () -> Void = {}
     @State private var mode: WriteMode = .em410x
-    @State private var em410xID = ""
+    // PMUI_WRITE_ID prefills the EM410x field (screenshots, QA).
+    @State private var em410xID = ProcessInfo.processInfo.environment["PMUI_WRITE_ID"] ?? ""
     @State private var hidFacility = ""
     @State private var hidCard = ""
     @State private var selectedDump: DumpEntry?
