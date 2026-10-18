@@ -1,0 +1,103 @@
+name: Build macOS app
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Apple silicon toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          swift --version
+
+      - name: Install Iceman client dependencies
+        run: brew install libusb lz4 pkgconf coreutils openssl@3
+
+      - name: Install pinned Arm GNU Toolchain
+        run: |
+          set -euo pipefail
+          pkg="$RUNNER_TEMP/arm-gnu-toolchain.pkg"
+          url='https://gitlab.arm.com/api/v4/projects/tooling%2Fgnu-toolchains-for-arm/packages/generic/gnu-toolchain/15.3.rel2/arm-gnu-toolchain-15.3.rel2-darwin-arm64-arm-none-eabi.pkg'
+          curl -fL --retry 3 "$url" -o "$pkg"
+          echo "779972fa545f738bfbba2ff0ae44d5ad7510b00cfb414702974844ba625412f3  $pkg" | shasum -a 256 -c -
+          pkgutil --expand "$pkg" "$RUNNER_TEMP/arm-pkg"
+          mkdir -p "$RUNNER_TEMP/arm-toolchain"
+          (cd "$RUNNER_TEMP/arm-toolchain" && gzip -dc "$RUNNER_TEMP/arm-pkg/Payload" | cpio -idm)
+          echo "$RUNNER_TEMP/arm-toolchain/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/arm-toolchain/bin/arm-none-eabi-gcc" --version
+
+      - name: Build pinned Iceman client
+        run: |
+          set -euo pipefail
+          git clone https://github.com/RfidResearchGroup/proxmark3.git "$RUNNER_TEMP/proxmark3"
+          git -C "$RUNNER_TEMP/proxmark3" checkout --detach 693ead08038c6ade43833579306e98eb3dd18d8e
+          test "$(git -C "$RUNNER_TEMP/proxmark3" rev-parse HEAD)" = 693ead08038c6ade43833579306e98eb3dd18d8e
+          make -C "$RUNNER_TEMP/proxmark3" client USE_BREW=1 BREW_PREFIX="$(brew --prefix)" SKIPREADLINE=1 SKIPQT=1 SKIPGD=1 SKIPPYTHON=1 -j 3
+          file "$RUNNER_TEMP/proxmark3/client/proxmark3"
+
+      - name: Test Swift package
+        run: swift test -j 3
+
+      - name: Build self-contained app
+        env:
+          PM3_SRC: ${{ runner.temp }}/proxmark3
+        run: ./scripts/make-app.sh release
+
+      - name: Prepare and verify release assets
+        env:
+          PM3_SRC: ${{ runner.temp }}/proxmark3
+        run: ./scripts/package-release.sh 0.1.0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ProxmarkUI-v0.1.0-macos-arm64-and-source
+          path: |
+            dist/ProxmarkUI-v0.1.0-macos-arm64.zip
+            dist/ProxmarkUI-v0.1.0-source.tar.gz
+            dist/Iceman-proxmark3-693ead08038c-source.tar.gz
+            dist/Iceman-proxmark3-693ead08038c.git.bundle
+            dist/lz4-1.10.0-source.tar.gz
+            dist/ProxmarkUI-LICENSE.txt
+            dist/THIRD_PARTY_NOTICES.md
+            dist/SOURCE_MANIFEST.md
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish tagged prerelease
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = v0.1.0
+          gh release create "$GITHUB_REF_NAME" \
+            dist/ProxmarkUI-v0.1.0-macos-arm64.zip \
+            dist/ProxmarkUI-v0.1.0-source.tar.gz \
+            dist/Iceman-proxmark3-693ead08038c-source.tar.gz \
+            dist/Iceman-proxmark3-693ead08038c.git.bundle \
+            dist/lz4-1.10.0-source.tar.gz \
+            dist/ProxmarkUI-LICENSE.txt \
+            dist/THIRD_PARTY_NOTICES.md \
+            dist/SOURCE_MANIFEST.md \
+            dist/SHA256SUMS.txt \
+            --verify-tag --title 'ProxmarkUI 0.1.0' \
+            --notes-file docs/RELEASE_NOTES.md --prerelease
