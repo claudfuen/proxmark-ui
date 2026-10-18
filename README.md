@@ -137,7 +137,7 @@ PM3_SRC=~/Repos/proxmark3 ./scripts/make-app.sh
 open dist/ProxmarkUI.app
 ```
 
-`swift build` gives you a development executable. `scripts/make-app.sh` builds a release app in `dist/ProxmarkUI.app` with the Iceman client, its dynamic libraries, dictionaries, scripts and resources, and the Easy and RDV4 firmware images. It builds each image from `PM3_SRC` (default `~/Repos/_vendor/proxmark3`), checks the client and images against that source revision, verifies the Easy package fits 256 KB, and never bundles a bootloader. The output is ad hoc signed, so sign and notarize it before publishing a download.
+`swift build` gives you a development executable. `scripts/make-app.sh` builds a release app in `dist/ProxmarkUI.app` with the Iceman client, its dynamic libraries, dictionaries, scripts and resources, and the Easy and RDV4 firmware images. It builds each image from `PM3_SRC` (default `~/Repos/_vendor/proxmark3`), checks the client and images against that source revision, verifies the Easy package fits 256 KB, and never bundles a bootloader. The current public ZIP is ad hoc signed and may require a manual first-launch allowance on some Macs. Developer ID signing and notarization are needed before the app can install future updates automatically with reliable publisher verification.
 
 The [release workflow](.github/workflows/macos-release.yml) runs the tests, builds Iceman at pinned revision `693ead08038c6ade43833579306e98eb3dd18d8e`, packages and verifies the app, and attaches the source and checksums to versioned releases. [`scripts/package-release.sh`](scripts/package-release.sh) produces the same assets locally.
 
