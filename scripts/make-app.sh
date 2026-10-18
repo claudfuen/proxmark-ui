@@ -119,12 +119,16 @@ cp "$PM3_FW_SRC" "$PM3_FW_STAGE/PM3RDV4/fullimage.elf"
 
 echo "==> Building ProxmarkUI ($CONFIG)"
 swift build -c "$CONFIG"
+swift build -c "$CONFIG" --product ProxmarkUIUpdater
 
 BIN=".build/$CONFIG/ProxmarkUI"
+HELPER=".build/$CONFIG/ProxmarkUIUpdater"
 APP="dist/ProxmarkUI.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/ProxmarkUI"
+cp "$HELPER" "$APP/Contents/Resources/ProxmarkUIUpdater"
+chmod +x "$APP/Contents/Resources/ProxmarkUIUpdater"
 
 # ---------------------------------------------------------------------------
 # App icon: the binary draws its own master (AppIcon.swift), sips makes the
@@ -265,6 +269,7 @@ for lib in "$PM3_LIB_DIR"/*.dylib; do
     fi
 done
 codesign --force --sign - --timestamp=none "$PM3_BIN_DIR/proxmark3" >/dev/null
+codesign --force --sign - --timestamp=none "$APP/Contents/Resources/ProxmarkUIUpdater" >/dev/null
 codesign --force --deep --sign - --timestamp=none "$APP" >/dev/null
 codesign --verify --deep --strict "$APP"
 

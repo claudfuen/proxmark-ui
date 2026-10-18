@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "ProxmarkUI", targets: ["ProxmarkUI"]),
+        .executable(name: "ProxmarkUIUpdater", targets: ["ProxmarkUIUpdater"]),
         .library(name: "ProxmarkKit", targets: ["ProxmarkKit"]),
     ],
     targets: [
@@ -16,6 +17,11 @@ let package = Package(
             name: "ProxmarkUI",
             dependencies: ["ProxmarkKit"],
             path: "Sources/ProxmarkUI"
+        ),
+        .executableTarget(
+            name: "ProxmarkUIUpdater",
+            dependencies: ["ProxmarkKit"],
+            path: "Sources/ProxmarkUIUpdater"
         ),
         .testTarget(
             name: "ProxmarkKitTests",

@@ -55,7 +55,10 @@ APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/
 codesign --verify --deep --strict "$APP"
 PM3_ROOT="$APP/Contents/Resources/pm3"
 PM3_BIN="$PM3_ROOT/bin/proxmark3"
+UPDATE_HELPER="$APP/Contents/Resources/ProxmarkUIUpdater"
 [[ -x "$PM3_BIN" ]] || { echo "error: bundled client missing" >&2; exit 1; }
+[[ -x "$UPDATE_HELPER" ]] || { echo "error: app update helper missing" >&2; exit 1; }
+codesign --verify --strict "$UPDATE_HELPER"
 [[ -s "$PM3_ROOT/share/proxmark3/dictionaries/mfc_default_keys.dic" ]] || {
     echo "error: bundled MIFARE dictionary missing" >&2
     exit 1
@@ -67,7 +70,7 @@ for target in PM3EASY PM3RDV4; do
     }
 done
 
-for binary in "$APP/Contents/MacOS/ProxmarkUI" "$PM3_BIN" "$PM3_ROOT"/lib/*.dylib; do
+for binary in "$APP/Contents/MacOS/ProxmarkUI" "$UPDATE_HELPER" "$PM3_BIN" "$PM3_ROOT"/lib/*.dylib; do
     [[ -f "$binary" ]] || continue
     file "$binary" | grep -q arm64 || {
         echo "error: $binary is not an Apple silicon binary" >&2
