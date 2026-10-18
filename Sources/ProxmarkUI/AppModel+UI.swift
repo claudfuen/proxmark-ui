@@ -60,7 +60,13 @@ extension AppModel {
             ScanResult(date: now.addingTimeInterval(-1260), family: .lf, kind: "HID Prox H10301", uid: "2006EC0C86", details: [Detail("FC / CN", "118 / 1603")], raw: ""),
             ScanResult(date: now.addingTimeInterval(-3000), family: .hf, kind: "NTAG215", uid: "04A2245A6E7380", details: [], raw: ""),
         ]
-        lastResult = classic
+        // PMUI_RESULT=lf|hid shows an identity tag as the latest read, so the
+        // Add to Library button is visible for screenshots.
+        switch ProcessInfo.processInfo.environment["PMUI_RESULT"] {
+        case "lf": lastResult = history[1]
+        case "hid": lastResult = history[2]
+        default: lastResult = classic
+        }
         log = [
             "[usb] pm3 --> hf search",
             " UID: A3 4F 19 C2",

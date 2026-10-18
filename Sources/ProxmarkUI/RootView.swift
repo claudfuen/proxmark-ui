@@ -17,6 +17,7 @@ enum Section_: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @EnvironmentObject var app: AppModel
+    @EnvironmentObject var tags: TagLibrary
     // PMUI_SECTION=scan|library|write opens on that screen (screenshots, QA).
     @State private var section: Section_ = Section_.allCases.first {
         $0.rawValue.lowercased() == ProcessInfo.processInfo.environment["PMUI_SECTION"]?.lowercased()
@@ -33,7 +34,7 @@ struct RootView: View {
                 List(selection: $section) {
                     ForEach(Section_.allCases) { s in
                         Label(s.rawValue, systemImage: s.icon)
-                            .badge(s == .library && !app.dumps.isEmpty ? app.dumps.count : 0)
+                            .badge(s == .library ? app.dumps.count + tags.tags.count : 0)
                             .tag(s)
                     }
                 }
@@ -47,7 +48,7 @@ struct RootView: View {
         } detail: {
             Group {
                 switch section {
-                case .scan: ScanView()
+                case .scan: ScanView(goToLibrary: { section = .library })
                 case .library: LibraryView(goToScan: { section = .scan })
                 case .write: WriteView(goToScan: { section = .scan })
                 }

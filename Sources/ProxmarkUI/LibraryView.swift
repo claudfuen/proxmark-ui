@@ -1,51 +1,55 @@
 import ProxmarkKit
 import SwiftUI
 
+/// One selectable row in the Library: a saved identity tag or a full dump.
+enum LibraryItem: Hashable {
+    case tag(SavedTag)
+    case dump(DumpEntry)
+}
+
 struct LibraryView: View {
     @EnvironmentObject var app: AppModel
+    @EnvironmentObject var tags: TagLibrary
     var goToScan: () -> Void = {}
-    @State private var selected: DumpEntry?
+    @State private var selected: LibraryItem?
     @State private var query = ""
     @State private var pendingDelete: DumpEntry?
 
-    private var filtered: [DumpEntry] {
-        guard !query.isEmpty else { return app.dumps }
-        return app.dumps.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-                || $0.uid.localizedCaseInsensitiveContains(query.replacingOccurrences(of: " ", with: ""))
-                || $0.kind.localizedCaseInsensitiveContains(query)
-        }
+    private func matches(_ q: String, name: String, uid: String, kind: String) -> Bool {
+        q.isEmpty
+            || name.localizedCaseInsensitiveContains(q)
+            || uid.localizedCaseInsensitiveContains(q.replacingOccurrences(of: " ", with: ""))
+            || kind.localizedCaseInsensitiveContains(q)
     }
+
+    private var filteredTags: [SavedTag] {
+        tags.tags.filter { matches(query, name: $0.name, uid: $0.uid, kind: $0.kind) }
+    }
+    private var filteredDumps: [DumpEntry] {
+        app.dumps.filter { matches(query, name: $0.name, uid: $0.uid, kind: $0.kind) }
+    }
+    private var isEmpty: Bool { tags.tags.isEmpty && app.dumps.isEmpty }
+    private var noMatches: Bool { filteredTags.isEmpty && filteredDumps.isEmpty }
 
     var body: some View {
         Group {
-            if app.dumps.isEmpty {
+            if isEmpty {
                 EmptyLibrary(goToScan: goToScan)
             } else {
                 HSplitView {
                     list
-                        .frame(minWidth: 240, idealWidth: 270, maxWidth: 300)
-                    Group {
-                        if let entry = selected {
-                            DumpDetailView(entry: entry)
-                        } else {
-                            Text(filtered.isEmpty ? "No dumps match \u{201C}\(query)\u{201D}" : "Select a dump")
-                                .font(Theme.sans(.regular, 13))
-                                .foregroundStyle(Theme.secondary)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    }
-                    .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(minWidth: 250, idealWidth: 280, maxWidth: 320)
+                    detail
+                        .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
         .onAppear {
-            if !AppModel.isDemo { app.loadDumps() }
-            if selected == nil { selected = app.dumps.first }
+            if !AppModel.isDemo { app.loadDumps(); tags.load() }
+            if selected == nil { selected = defaultSelection }
         }
-        .onChange(of: app.dumps) { dumps in
-            if selected == nil || !dumps.contains(selected!) { selected = dumps.first }
-        }
+        .onChange(of: app.dumps) { _ in pruneSelection() }
+        .onChange(of: tags.tags) { _ in pruneSelection() }
         .confirmationDialog(
             "Delete \(pendingDelete?.name ?? "dump")?",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
@@ -61,19 +65,64 @@ struct LibraryView: View {
         }
     }
 
-    private var list: some View {
-        List(filtered, selection: $selected) { entry in
-            DumpRow(entry: entry)
-                .tag(entry)
-                .contextMenu {
-                    CopyMenuItem(title: "Copy UID", value: entry.uid)
-                    Button("Reveal in Finder") { app.reveal(entry) }
-                    Divider()
-                    Button("Delete", role: .destructive) { pendingDelete = entry }
-                }
+    private var defaultSelection: LibraryItem? {
+        tags.tags.first.map(LibraryItem.tag) ?? app.dumps.first.map(LibraryItem.dump)
+    }
+
+    private func pruneSelection() {
+        switch selected {
+        case .tag(let t) where !tags.tags.contains(t): selected = defaultSelection
+        case .dump(let d) where !app.dumps.contains(d): selected = defaultSelection
+        case .none: selected = defaultSelection
+        default: break
         }
-        .listStyle(.inset)
+    }
+
+    private var list: some View {
+        List(selection: $selected) {
+            if !filteredTags.isEmpty {
+                Section("Saved tags") {
+                    ForEach(filteredTags) { tag in
+                        SavedTagRow(tag: tag)
+                            .tag(LibraryItem.tag(tag))
+                            .contextMenu {
+                                CopyMenuItem(title: "Copy UID", value: tag.uid)
+                                Button("Rename…") { selected = .tag(tag) }
+                                Divider()
+                                Button("Delete", role: .destructive) { tags.delete(tag) }
+                            }
+                    }
+                }
+            }
+            if !filteredDumps.isEmpty {
+                Section("Dumps") {
+                    ForEach(filteredDumps) { entry in
+                        DumpRow(entry: entry)
+                            .tag(LibraryItem.dump(entry))
+                            .contextMenu {
+                                CopyMenuItem(title: "Copy UID", value: entry.uid)
+                                Button("Reveal in Finder") { app.reveal(entry) }
+                                Divider()
+                                Button("Delete", role: .destructive) { pendingDelete = entry }
+                            }
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
         .searchable(text: $query, placement: .toolbar, prompt: "Name, UID or type")
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch selected {
+        case .dump(let entry): DumpDetailView(entry: entry)
+        case .tag(let tag): SavedTagDetailView(tag: tag, goToScan: goToScan)
+        case .none:
+            Text(noMatches ? "No tags match \u{201C}\(query)\u{201D}" : "Select a tag")
+                .font(Theme.sans(.regular, 13))
+                .foregroundStyle(Theme.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 
@@ -117,10 +166,34 @@ struct DumpRow: View {
     }
 }
 
+struct SavedTagRow: View {
+    let tag: SavedTag
+
+    var body: some View {
+        HStack(spacing: 10) {
+            IconTile(systemName: icon(for: tag.kind), size: 30)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(tag.name)
+                    .font(Theme.sans(.medium, 13))
+                    .lineLimit(1)
+                Text(spaced(tag.uid))
+                    .font(Theme.mono(.regular, 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            FamilyBadge(isHF: tag.family == .hf)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 func icon(for kind: String) -> String {
     let k = kind.lowercased()
     if k.contains("ultralight") || k.contains("ntag") { return "tag" }
     if k.contains("classic") || k.contains("mini") { return "creditcard" }
+    if k.contains("hid") { return "person.text.rectangle" }
+    if k.contains("em410") { return "key.radiowaves.forward" }
     return "wave.3.right"
 }
 
@@ -142,14 +215,14 @@ struct EmptyLibrary: View {
     var body: some View {
         VStack(spacing: 14) {
             IconTile(systemName: "tray", size: 52)
-            Text("No dumps yet")
+            Text("Your Library is empty")
                 .font(Theme.sans(.semibold, 17))
                 .foregroundStyle(Theme.ink)
-            Text("Scan a MIFARE Classic or Ultralight/NTAG tag, then choose Read full dump. Every sector and key lands here, ready to inspect or write to a blank.")
+            Text("Scan a tag, then choose Add to Library to keep it with a name. MIFARE Classic and Ultralight/NTAG tags can also be saved as full dumps with Read full dump.")
                 .font(Theme.sans(.regular, 13))
                 .foregroundStyle(Theme.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
+                .frame(maxWidth: 400)
             Button {
                 goToScan()
             } label: {
@@ -160,6 +233,95 @@ struct EmptyLibrary: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Detail for a saved identity tag: a card like the scan result, rename and
+/// delete, the tag's details, and a note on whether it can be written back.
+struct SavedTagDetailView: View {
+    @EnvironmentObject var tags: TagLibrary
+    let tag: SavedTag
+    var goToScan: () -> Void = {}
+    @State private var renaming = false
+    @State private var draftName = ""
+    @State private var confirmDelete = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Card(padding: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                SectionTitle(text: "Saved tag")
+                                Spacer()
+                                Text(tag.savedAt, format: .dateTime.month(.abbreviated).day().year())
+                                    .font(Theme.sans(.regular, 11.5))
+                                    .foregroundStyle(Theme.tertiary)
+                            }
+                            TagCard(kind: tag.name, spacedUID: tag.spacedUID, isHF: tag.family == .hf)
+                            Text(tag.kind)
+                                .font(Theme.sans(.medium, 12.5))
+                                .foregroundStyle(Theme.secondary)
+                            writability
+                            HStack(spacing: 8) {
+                                Button {
+                                    draftName = tag.name
+                                    renaming = true
+                                } label: { Label("Rename", systemImage: "pencil") }
+                                    .buttonStyle(PillButtonStyle(filled: false))
+                                CopyButton(value: tag.uid, label: "Copy UID")
+                                Spacer()
+                                Button(role: .destructive) { confirmDelete = true } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .buttonStyle(PillButtonStyle(filled: false, destructive: true))
+                            }
+                        }
+                        .padding(18)
+
+                        if !tag.details.isEmpty {
+                            Divider().overlay(Theme.hairline)
+                            VStack(spacing: 0) {
+                                ForEach(Array(tag.details.enumerated()), id: \.offset) { i, d in
+                                    DetailRow(label: d.label, value: d.value)
+                                    if i < tag.details.count - 1 { Divider().overlay(Theme.hairline) }
+                                }
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 6)
+                        }
+                    }
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .alert("Rename tag", isPresented: $renaming) {
+            TextField("Name", text: $draftName)
+            Button("Save") { tags.rename(tag, to: draftName) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog("Delete \(tag.name)?", isPresented: $confirmDelete) {
+            Button("Delete tag", role: .destructive) { tags.delete(tag) }
+        } message: {
+            Text("This removes the saved tag from your Library. It doesn't change any physical tag.")
+        }
+    }
+
+    @ViewBuilder private var writability: some View {
+        switch tag.write {
+        case .em410x, .hid:
+            Label("Can be written to a blank from the Write tab.", systemImage: "square.and.arrow.up")
+                .font(Theme.sans(.regular, 12))
+                .foregroundStyle(Theme.good)
+        case .none(let reason):
+            Label(reason, systemImage: "info.circle")
+                .font(Theme.sans(.regular, 12))
+                .foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

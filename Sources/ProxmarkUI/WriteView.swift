@@ -6,39 +6,71 @@ import SwiftUI
 /// which validates input before it ever reaches the client's command line.
 struct WriteView: View {
     @EnvironmentObject var app: AppModel
+    @EnvironmentObject var tags: TagLibrary
     var goToScan: () -> Void = {}
-    @State private var mode: WriteMode = .em410x
+    @State private var mode: WriteMode = .fromLibrary
+    // PMUI_WRITE_PICK=first preselects the first saved tag (screenshots, QA).
+    @State private var selectedTag: SavedTag? = nil
+    private let pickFirstTag = ProcessInfo.processInfo.environment["PMUI_WRITE_PICK"] == "first"
     // PMUI_WRITE_ID prefills the EM410x field (screenshots, QA).
     @State private var em410xID = ProcessInfo.processInfo.environment["PMUI_WRITE_ID"] ?? ""
     @State private var hidFacility = ""
     @State private var hidCard = ""
     @State private var selectedDump: DumpEntry?
     @State private var pending: PendingWrite?
-    @State private var inFlight: String?
-    @State private var succeeded: String?
+    @State private var phase: WritePhase = WriteView.demoPhase
+    @State private var retry: (() async -> Void)?
+
+    /// PMUI_WRITE_PHASE previews a write outcome for screenshots and QA.
+    static var demoPhase: WritePhase {
+        switch ProcessInfo.processInfo.environment["PMUI_WRITE_PHASE"] {
+        case "busy": return .busy(step: "Reading back", attempt: 2, total: 3)
+        case "verified": return .verified(name: "Front door fob", attempt: 2, total: 3)
+        case "unverified": return .unverified(name: "Front door fob", attempts: 3)
+        case "failed": return .failed("The reader didn't respond. Is a tag on the antenna?")
+        default: return .idle
+        }
+    }
+
+    /// How many write-then-read cycles a verifiable write will try before it
+    /// reports that it couldn't confirm the tag.
+    private let verifyAttempts = 3
 
     struct PendingWrite {
         let summary: String
-        let action: () async -> Void
+        let run: () async -> Void
+    }
+
+    /// The state machine a write moves through. EM410x and HID writes verify by
+    /// reading the tag back; dump restores report wrote/failed without a compare.
+    enum WritePhase: Equatable {
+        case idle
+        case busy(step: String, attempt: Int, total: Int)
+        case verified(name: String, attempt: Int, total: Int)
+        case wrote(name: String)
+        case unverified(name: String, attempts: Int)
+        case failed(String)
+
+        var isRunning: Bool { if case .busy = self { return true }; return false }
     }
 
     enum WriteMode: String, CaseIterable, Identifiable {
+        case fromLibrary = "From Library"
         case em410x = "EM410x"
         case hid = "HID Prox"
-        case fromDump = "From a dump"
         var id: String { rawValue }
         var icon: String {
             switch self {
+            case .fromLibrary: return "tray.full"
             case .em410x: return "key.radiowaves.forward"
             case .hid: return "person.text.rectangle"
-            case .fromDump: return "doc.on.doc"
             }
         }
         var blurb: String {
             switch self {
-            case .em410x: return "125 kHz ID onto a T5577"
-            case .hid: return "Facility + card onto a T5577"
-            case .fromDump: return "Classic or NTAG from Library"
+            case .fromLibrary: return "A saved tag or dump"
+            case .em410x: return "Type a 125 kHz ID"
+            case .hid: return "Type facility + card"
             }
         }
     }
@@ -61,56 +93,18 @@ struct WriteView: View {
                 }
 
                 switch mode {
+                case .fromLibrary: fromLibraryCard
                 case .em410x: em410xCard
                 case .hid: hidCard_
-                case .fromDump: fromDumpCard
                 }
 
-                if app.isBusy {
-                    HStack(spacing: 14) {
-                        AntennaField(active: true, size: 44)
-                        Text(app.busyLabel).font(Theme.sans(.medium, 13)).foregroundStyle(Theme.ink)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 6)
-                }
-                if let error = app.lastError, !app.isBusy {
-                    Callout(systemName: "exclamationmark.circle", tint: Theme.bad, title: "Write failed", message: error)
-                }
-                if let ok = succeeded, !app.isBusy, app.lastError == nil {
-                    Callout(
-                        systemName: "checkmark.seal.fill", tint: Theme.good,
-                        title: "Wrote \(ok)",
-                        message: "Scan the tag to confirm it reads back as expected."
-                    ) {
-                        Button("Verify in Scan") { succeeded = nil; goToScan() }
-                            .buttonStyle(PillButtonStyle(filled: false))
-                            .padding(.top, 2)
-                    }
-                    .transition(.opacity)
-                }
+                WriteStatusPanel(phase: phase, onRetry: retry.map { r in { phase = .idle; Task { await r() } } }, onDone: { phase = .idle })
             }
             .padding(24)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .animation(.easeOut(duration: 0.2), value: succeeded)
-        .onChange(of: app.isBusy) { busy in
-            if busy {
-                succeeded = nil
-                let label = app.busyLabel
-                inFlight = label.hasPrefix("Writing ") || label.hasPrefix("Restoring ") ? label : nil
-            } else if app.lastError == nil, let done = inFlight {
-                // Ignore scans, reads, and firmware updates that can also
-                // change the shared busy state while Write is visible.
-                succeeded = done.replacingOccurrences(of: "Writing ", with: "")
-                    .replacingOccurrences(of: "Restoring ", with: "")
-                    .replacingOccurrences(of: "...", with: "")
-                inFlight = nil
-            } else {
-                inFlight = nil
-            }
-        }
+        .animation(.easeOut(duration: 0.2), value: phase)
         .confirmationDialog(
             "Write to the tag on the antenna?",
             isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
@@ -118,8 +112,10 @@ struct WriteView: View {
             presenting: pending
         ) { p in
             Button("Write", role: .destructive) {
+                let run = p.run
                 pending = nil
-                Task { await p.action() }
+                retry = run
+                Task { await run() }
             }
             Button("Cancel", role: .cancel) { pending = nil }
         } message: { p in
@@ -128,6 +124,40 @@ struct WriteView: View {
     }
 
     private var canWrite: Bool { app.connection.isReady && !app.isBusy }
+
+    // MARK: Write then verify
+
+    /// Writes, then reads the tag back and compares it to what was intended,
+    /// retrying the whole cycle up to `verifyAttempts` times. This is what makes
+    /// a write trustworthy: the reader confirms the tag now reads as expected,
+    /// rather than assuming the flash command worked.
+    private func writeAndVerify(name: String, family: TagFamily, write: @escaping () async -> Void, matches: @escaping (ScanResult) -> Bool) async {
+        guard app.connection.isReady else { return }
+        let total = verifyAttempts
+        for attempt in 1...total {
+            phase = .busy(step: "Writing", attempt: attempt, total: total)
+            await write()
+            if let error = app.lastError {
+                if attempt == total { phase = .failed(error); return }
+                continue
+            }
+            phase = .busy(step: "Reading back", attempt: attempt, total: total)
+            await app.scan(family: family)
+            if let read = app.lastResult, matches(read) {
+                phase = .verified(name: name, attempt: attempt, total: total)
+                return
+            }
+            if attempt == total { phase = .unverified(name: name, attempts: total) }
+        }
+    }
+
+    /// A write with no automatic read-back (dump restores), reported plainly.
+    private func plainWrite(name: String, write: @escaping () async -> Void) async {
+        guard app.connection.isReady else { return }
+        phase = .busy(step: "Writing", attempt: 1, total: 1)
+        await write()
+        if let error = app.lastError { phase = .failed(error) } else { phase = .wrote(name: name) }
+    }
 
     // MARK: EM410x
 
@@ -145,10 +175,14 @@ struct WriteView: View {
             }
         } action: {
             Button {
-                let id = em410xID
-                pending = .init(summary: "EM410x \(id.uppercased())") { await app.writeEM410x(id: id) }
+                let id = em410xID.filter { !$0.isWhitespace }.uppercased()
+                pending = .init(summary: "EM410x \(id)") {
+                    await writeAndVerify(name: "EM410x \(id)", family: .lf,
+                        write: { await app.writeEM410x(id: id) },
+                        matches: { $0.isEM410x && $0.uid.uppercased() == id })
+                }
             } label: {
-                Label("Write EM410x", systemImage: "square.and.arrow.down")
+                Label("Write and verify", systemImage: "arrow.triangle.2.circlepath")
             }
             .buttonStyle(PillButtonStyle(destructive: true, large: true))
             .disabled(!canWrite || (try? em410xCommand.get()) == nil)
@@ -178,30 +212,73 @@ struct WriteView: View {
         } action: {
             Button {
                 let fc = hidFacility, cn = hidCard
-                pending = .init(summary: "HID Prox \(fc)/\(cn)") { await app.writeHID(facility: fc, card: cn) }
+                pending = .init(summary: "HID Prox \(fc)/\(cn)") {
+                    await writeAndVerify(name: "HID Prox \(fc)/\(cn)", family: .lf,
+                        write: { await app.writeHID(facility: fc, card: cn) },
+                        matches: { hidMatch($0, facility: fc, card: cn) })
+                }
             } label: {
-                Label("Write HID", systemImage: "square.and.arrow.down")
+                Label("Write and verify", systemImage: "arrow.triangle.2.circlepath")
             }
             .buttonStyle(PillButtonStyle(destructive: true, large: true))
             .disabled(!canWrite || (try? hidCommand.get()) == nil)
         }
     }
 
-    // MARK: From a dump
+    // MARK: From Library
 
-    private var fromDumpCard: some View {
+    private var writableTags: [SavedTag] { tags.tags.filter { $0.write.isWritable } }
+
+    private var fromLibraryCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 14) {
-                SectionTitle(text: "Restore a saved dump", trailing: "\(app.dumps.count) in Library")
-                if app.dumps.isEmpty {
-                    Text("No dumps saved yet. Read a Classic or Ultralight tag in Scan first.")
+                SectionTitle(text: "Write from your Library", trailing: "\(writableTags.count + app.dumps.count) available")
+
+                if writableTags.isEmpty && app.dumps.isEmpty {
+                    Text("Nothing to write yet. Scan a tag and choose Add to Library, or read a full dump, then come back here.")
                         .font(Theme.sans(.regular, 12.5))
                         .foregroundStyle(Theme.secondary)
-                } else {
+                }
+
+                if !writableTags.isEmpty {
+                    Text("Saved tags")
+                        .font(Theme.sans(.semibold, 11))
+                        .foregroundStyle(Theme.secondary)
+                    VStack(spacing: 0) {
+                        ForEach(writableTags) { t in
+                            Button {
+                                selectedTag = t
+                                selectedDump = nil
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: selectedTag == t ? "largecircle.fill.circle" : "circle")
+                                        .foregroundStyle(selectedTag == t ? Theme.accent : Theme.tertiary)
+                                    SavedTagRow(tag: t)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 2)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(RowHoverStyle())
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                    }
+                }
+
+                if let t = selectedTag, selectedDump == nil {
+                    Divider().overlay(Theme.hairline)
+                    savedTagActions(t)
+                }
+
+                if !app.dumps.isEmpty {
+                    Text("Dumps")
+                        .font(Theme.sans(.semibold, 11))
+                        .foregroundStyle(Theme.secondary)
                     VStack(spacing: 0) {
                         ForEach(app.dumps) { d in
                             Button {
                                 selectedDump = d
+                                selectedTag = nil
                             } label: {
                                 HStack(spacing: 10) {
                                     Image(systemName: selectedDump == d ? "largecircle.fill.circle" : "circle")
@@ -225,7 +302,7 @@ struct WriteView: View {
                             HStack(spacing: 8) {
                                 Button {
                                     pending = .init(summary: "Restore \(d.name) (\(spaced(d.uid))) to a Classic tag that already uses the saved keys") {
-                                        await app.restoreClassic(dump: d, authenticateWithKeys: true)
+                                        await plainWrite(name: d.name) { await app.restoreClassic(dump: d, authenticateWithKeys: true) }
                                     }
                                 } label: {
                                     Label("Restore with saved keys", systemImage: "square.and.arrow.down")
@@ -236,7 +313,7 @@ struct WriteView: View {
 
                                 Button {
                                     pending = .init(summary: "Restore \(d.name) (\(spaced(d.uid))) to a Classic tag that still uses default FFFFFFFFFFFF keys") {
-                                        await app.restoreClassic(dump: d, authenticateWithKeys: false)
+                                        await plainWrite(name: d.name) { await app.restoreClassic(dump: d, authenticateWithKeys: false) }
                                     }
                                 } label: {
                                     Label("Restore to default-key tag", systemImage: "square.and.arrow.down")
@@ -252,7 +329,7 @@ struct WriteView: View {
                             }
                             Button {
                                 pending = .init(summary: "Load \(d.name) (\(spaced(d.uid))) onto a Gen1a magic tag, UID included") {
-                                    await app.loadMagic(dump: d)
+                                    await plainWrite(name: d.name) { await app.loadMagic(dump: d) }
                                 }
                             } label: {
                                 Label("Load onto magic Gen1a", systemImage: "wand.and.stars")
@@ -263,7 +340,7 @@ struct WriteView: View {
                         } else {
                             Button {
                                 pending = .init(summary: "Restore writable user pages from \(d.name) (\(spaced(d.uid))) to an Ultralight/NTAG") {
-                                    await app.restoreUltralight(dump: d)
+                                    await plainWrite(name: d.name) { await app.restoreUltralight(dump: d) }
                                 }
                             } label: {
                                 Label("Restore user pages to Ultralight/NTAG", systemImage: "square.and.arrow.down")
@@ -278,6 +355,142 @@ struct WriteView: View {
         }
         .onAppear {
             if let s = selectedDump, !app.dumps.contains(s) { selectedDump = nil }
+            if let t = selectedTag, !tags.tags.contains(t) { selectedTag = nil }
+            if pickFirstTag, selectedTag == nil { selectedTag = writableTags.first }
+        }
+    }
+
+    /// Write buttons for a saved identity tag, routed through the same confirm
+    /// flow and the same AppModel write calls as typing the values by hand.
+    @ViewBuilder private func savedTagActions(_ tag: SavedTag) -> some View {
+        switch tag.write {
+        case .em410x(let id):
+            VStack(alignment: .leading, spacing: 8) {
+                commandPreview((try? Commands.em410xClone(id: id)) ?? "")
+                Button {
+                    pending = .init(summary: "Write \(tag.name) \u{2014} EM410x \(id) \u{2014} onto a blank T5577") {
+                        await writeAndVerify(name: tag.name, family: .lf,
+                            write: { await app.writeEM410x(id: id) },
+                            matches: { $0.isEM410x && $0.uid.uppercased() == id.uppercased() })
+                    }
+                } label: {
+                    Label("Write \(tag.name) and verify", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(PillButtonStyle(destructive: true, large: true))
+                .disabled(!canWrite)
+            }
+        case .hid(let facility, let card):
+            VStack(alignment: .leading, spacing: 8) {
+                commandPreview((try? Commands.hidClone(facility: facility, card: card)) ?? "")
+                Button {
+                    pending = .init(summary: "Write \(tag.name) \u{2014} HID Prox \(facility)/\(card) \u{2014} onto a blank T5577") {
+                        await writeAndVerify(name: tag.name, family: .lf,
+                            write: { await app.writeHID(facility: facility, card: card) },
+                            matches: { hidMatch($0, facility: facility, card: card) })
+                    }
+                } label: {
+                    Label("Write \(tag.name) and verify", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(PillButtonStyle(destructive: true, large: true))
+                .disabled(!canWrite)
+            }
+        case .none(let reason):
+            Text(reason).font(Theme.sans(.regular, 12)).foregroundStyle(Theme.secondary)
+        }
+    }
+
+    /// A read-back is an HID match when the family and both numbers agree.
+    private func hidMatch(_ read: ScanResult, facility: String, card: String) -> Bool {
+        guard read.isHID else { return false }
+        func number(_ labelFragment: String) -> String? {
+            read.details.first { $0.label.localizedCaseInsensitiveContains(labelFragment) }?.value
+        }
+        let fc = number("facility")
+        let cn = number("card")
+        if let fc, let cn { return fc == facility && cn == card }
+        // Some client builds print a single "FC / CN" line instead.
+        if let combined = number("fc") { return combined.contains(facility) && combined.contains(card) }
+        return false
+    }
+
+    private func commandPreview(_ cmd: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "terminal").font(.system(size: 11)).foregroundStyle(Theme.tertiary)
+            Text(cmd).font(Theme.mono(.regular, 11.5)).foregroundStyle(Theme.secondary).textSelection(.enabled)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.inset, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
+/// The outcome area under the write forms: a live write-then-verify cycle, a
+/// verified or unverified result, or a failure, each with the next step.
+struct WriteStatusPanel: View {
+    let phase: WriteView.WritePhase
+    var onRetry: (() -> Void)?
+    var onDone: () -> Void
+
+    var body: some View {
+        switch phase {
+        case .idle:
+            EmptyView()
+
+        case .busy(let step, let attempt, let total):
+            HStack(spacing: 14) {
+                AntennaField(active: true, size: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(step)…").font(Theme.sans(.semibold, 13.5)).foregroundStyle(Theme.ink)
+                    Text(total > 1 ? "Write and verify \u{00B7} attempt \(attempt) of \(total)" : "Keep the tag on the antenna.")
+                        .font(Theme.sans(.regular, 12)).foregroundStyle(Theme.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 6)
+
+        case .verified(let name, let attempt, let total):
+            Callout(
+                systemName: "checkmark.seal.fill", tint: Theme.good,
+                title: "Verified \(name)",
+                message: attempt == 1
+                    ? "The reader wrote the tag and read it back to confirm it matches."
+                    : "Confirmed on attempt \(attempt) of \(total). The reader read the tag back and it matches."
+            ) {
+                Button("Done") { onDone() }.buttonStyle(PillButtonStyle(filled: false)).padding(.top, 2)
+            }
+            .transition(.opacity)
+
+        case .wrote(let name):
+            Callout(
+                systemName: "checkmark.circle.fill", tint: Theme.good,
+                title: "Wrote \(name)",
+                message: "The write finished. Scan the tag to confirm it reads back as expected."
+            ) {
+                Button("Done") { onDone() }.buttonStyle(PillButtonStyle(filled: false)).padding(.top, 2)
+            }
+            .transition(.opacity)
+
+        case .unverified(let name, let attempts):
+            Callout(
+                systemName: "exclamationmark.triangle.fill", tint: Theme.warn,
+                title: "Couldn't confirm \(name)",
+                message: "Wrote and read back \(attempts) times, but the tag didn't read as expected. It may not be a writable T5577, or it slipped off the antenna. Reposition it and try again."
+            ) {
+                if let onRetry {
+                    Button("Write and verify again") { onRetry() }
+                        .buttonStyle(PillButtonStyle()).padding(.top, 2)
+                }
+            }
+            .transition(.opacity)
+
+        case .failed(let reason):
+            Callout(systemName: "exclamationmark.circle.fill", tint: Theme.bad, title: "Write failed", message: reason) {
+                if let onRetry {
+                    Button("Try again") { onRetry() }
+                        .buttonStyle(PillButtonStyle()).padding(.top, 2)
+                }
+            }
+            .transition(.opacity)
         }
     }
 }

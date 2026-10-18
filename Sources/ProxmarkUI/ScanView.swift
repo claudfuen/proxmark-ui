@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ScanView: View {
     @EnvironmentObject var app: AppModel
+    var goToLibrary: () -> Void = {}
     @State private var showLog = false
 
     var body: some View {
@@ -12,7 +13,7 @@ struct ScanView: View {
                 ReaderPanel()
 
                 if let result = app.lastResult {
-                    ResultCard(result: result)
+                    ResultCard(result: result, goToLibrary: goToLibrary)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -191,7 +192,18 @@ struct TilePressStyle: ButtonStyle {
 
 struct ResultCard: View {
     @EnvironmentObject var app: AppModel
+    @EnvironmentObject var tags: TagLibrary
     let result: ScanResult
+    var goToLibrary: () -> Void = {}
+
+    /// An identity tag (EM410x, HID, …) is kept with Add to Library. Classic and
+    /// Ultralight are kept by reading a full dump instead.
+    private var isIdentityTag: Bool { !result.isClassic && !result.isUltralight }
+    private var alreadySaved: Bool { tags.contains(result) }
+
+    @State private var naming = false
+    @State private var draftName = ""
+    @State private var justSaved = false
 
     var body: some View {
         Card(padding: 0) {
@@ -218,6 +230,28 @@ struct ResultCard: View {
                                 ? "Recovers keys with autopwn and saves every sector. Can take minutes."
                                 : "Saves every page to the Library.")
                         }
+                        if isIdentityTag {
+                            if alreadySaved || justSaved {
+                                Button {
+                                    goToLibrary()
+                                } label: {
+                                    Label("Saved to Library", systemImage: "checkmark.circle.fill")
+                                }
+                                .buttonStyle(PillButtonStyle(filled: false))
+                                .tint(Theme.good)
+                                .help("Already in your Library. Click to open it.")
+                            } else {
+                                Button {
+                                    draftName = suggestedName
+                                    naming = true
+                                } label: {
+                                    Label("Add to Library", systemImage: "plus.circle")
+                                }
+                                .buttonStyle(PillButtonStyle())
+                                .keyboardShortcut("s", modifiers: .command)
+                                .help("Save this tag to your Library with a name (⌘S).")
+                            }
+                        }
                         CopyButton(value: result.uid, label: "Copy UID")
                     }
                 }
@@ -238,6 +272,26 @@ struct ResultCard: View {
                 }
             }
         }
+        .alert("Save to Library", isPresented: $naming) {
+            TextField("Name", text: $draftName)
+            Button("Save") { save() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Give this \(result.kind) a name you'll recognize, like \u{201C}Front door fob\u{201D}.")
+        }
+    }
+
+    private var suggestedName: String {
+        if let last = result.details.first(where: { $0.label.localizedCaseInsensitiveContains("card") })?.value {
+            return "\(result.kind) \(last)"
+        }
+        return result.kind
+    }
+
+    private func save() {
+        let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard tags.add(result, name: name.isEmpty ? suggestedName : name) != nil else { return }
+        withAnimation { justSaved = true }
     }
 }
 
