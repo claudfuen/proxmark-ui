@@ -3,9 +3,26 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="$1"
+VERSION=""
+if (( $# > 0 )); then
+    VERSION="$1"
+fi
+if [[ -z "$VERSION" ]]; then
+    VERSION="$(printenv PMUI_VERSION || true)"
+fi
+if [[ -z "$VERSION" ]]; then
+    EXACT_TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+    if [[ "$EXACT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        VERSION="$(printf '%s' "$EXACT_TAG" | cut -c 2-)"
+    fi
+fi
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "usage: scripts/package-release.sh VERSION" >&2
+    echo "usage: scripts/package-release.sh VERSION (or set PMUI_VERSION, or run at a version tag)" >&2
+    exit 1
+fi
+EXACT_TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+if [[ "$EXACT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$EXACT_TAG" != "v$VERSION" ]]; then
+    echo "error: requested version $VERSION differs from source tag $EXACT_TAG" >&2
     exit 1
 fi
 APP="dist/ProxmarkUI.app"
@@ -28,6 +45,11 @@ fi
 APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 [[ "$APP_VERSION" = "$VERSION" ]] || {
     echo "error: app version $APP_VERSION differs from requested $VERSION" >&2
+    exit 1
+}
+APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+[[ "$APP_BUILD" = "$VERSION" ]] || {
+    echo "error: app build $APP_BUILD differs from requested $VERSION" >&2
     exit 1
 }
 codesign --verify --deep --strict "$APP"
@@ -108,7 +130,11 @@ fi
 
 cp LICENSE.txt dist/ProxmarkUI-LICENSE.txt
 cp THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
-cp docs/RELEASE_NOTES.md dist/PRERELEASE_NOTES.md
+if [[ "$VERSION" = 0.1.0 ]]; then
+    cp docs/RELEASE_NOTES.md dist/PRERELEASE_NOTES.md
+else
+    rm -f dist/PRERELEASE_NOTES.md
+fi
 {
     printf '# ProxmarkUI v%s release sources\n\n' "$VERSION"
     printf 'The Apple silicon ZIP was built from this repository release commit and\n'

@@ -5,6 +5,11 @@ on:
     branches: [main]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: Optional version for a manual build (for example, 0.1.1)
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -21,6 +26,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Select app version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" = tag ]]; then
+            tag="$GITHUB_REF_NAME"
+          elif [[ -n "$REQUESTED_VERSION" ]]; then
+            tag="$REQUESTED_VERSION"
+            [[ "$tag" = v* ]] || tag="v$tag"
+          else
+            tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null || true)"
+            [[ -n "$tag" ]] || tag=v0.1.0
+          fi
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release version: $tag" >&2
+            exit 1
+          fi
+          version="$(printf '%s' "$tag" | cut -c 2-)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building ProxmarkUI $version from $GITHUB_REF"
 
       - name: Check Apple silicon toolchain
         run: |
@@ -60,19 +88,21 @@ jobs:
         env:
           PM3_SRC: ${{ runner.temp }}/proxmark3
           PM3_JOBS: 3
+          PMUI_VERSION: ${{ steps.version.outputs.version }}
         run: ./scripts/make-app.sh release
 
       - name: Prepare and verify release assets
         env:
           PM3_SRC: ${{ runner.temp }}/proxmark3
-        run: ./scripts/package-release.sh 0.1.0
+          PMUI_VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/package-release.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ProxmarkUI-v0.1.0-macos-arm64-and-source
+          name: ProxmarkUI-v${{ steps.version.outputs.version }}-macos-arm64-and-source
           path: |
-            dist/ProxmarkUI-v0.1.0-macos-arm64.zip
-            dist/ProxmarkUI-v0.1.0-source.tar.gz
+            dist/ProxmarkUI-v${{ steps.version.outputs.version }}-macos-arm64.zip
+            dist/ProxmarkUI-v${{ steps.version.outputs.version }}-source.tar.gz
             dist/Iceman-proxmark3-693ead08038c-source.tar.gz
             dist/Iceman-proxmark3-693ead08038c.git.bundle
             dist/lz4-1.10.0-source.tar.gz
@@ -83,17 +113,18 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish tagged prerelease
+      - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = v0.1.0
+          test "$GITHUB_REF_NAME" = "v$RELEASE_VERSION"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              dist/ProxmarkUI-v0.1.0-macos-arm64.zip \
-              dist/ProxmarkUI-v0.1.0-source.tar.gz \
+              dist/ProxmarkUI-v"$RELEASE_VERSION"-macos-arm64.zip \
+              dist/ProxmarkUI-v"$RELEASE_VERSION"-source.tar.gz \
               dist/Iceman-proxmark3-693ead08038c-source.tar.gz \
               dist/Iceman-proxmark3-693ead08038c.git.bundle \
               dist/lz4-1.10.0-source.tar.gz \
@@ -102,9 +133,18 @@ jobs:
               dist/SOURCE_MANIFEST.md \
               dist/SHA256SUMS.txt --clobber
           else
+            if [[ "$RELEASE_VERSION" = 0.1.0 ]]; then
+              set -- --notes-file docs/RELEASE_NOTES.md --prerelease
+            else
+              intro="$(printf '%s\n\n%s\n\n%s\n' \
+                "![ProxmarkUI Scan view with demo data](https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_REF_NAME/docs/images/scan-light.png)" \
+                "Download the Apple silicon ZIP and verify it against SHA256SUMS.txt. The app is ad hoc signed and is not notarized, so macOS may require Open Anyway in System Settings > Privacy & Security on first launch." \
+                "The screenshot uses demo data. Confirm the exact reader model before any firmware update.")"
+              set -- --generate-notes --notes "$intro" --prerelease
+            fi
             gh release create "$GITHUB_REF_NAME" \
-              dist/ProxmarkUI-v0.1.0-macos-arm64.zip \
-              dist/ProxmarkUI-v0.1.0-source.tar.gz \
+              dist/ProxmarkUI-v"$RELEASE_VERSION"-macos-arm64.zip \
+              dist/ProxmarkUI-v"$RELEASE_VERSION"-source.tar.gz \
               dist/Iceman-proxmark3-693ead08038c-source.tar.gz \
               dist/Iceman-proxmark3-693ead08038c.git.bundle \
               dist/lz4-1.10.0-source.tar.gz \
@@ -112,6 +152,5 @@ jobs:
               dist/THIRD_PARTY_NOTICES.md \
               dist/SOURCE_MANIFEST.md \
               dist/SHA256SUMS.txt \
-              --verify-tag --title 'ProxmarkUI 0.1.0' \
-              --notes-file docs/RELEASE_NOTES.md --prerelease
+              --verify-tag --title "ProxmarkUI $RELEASE_VERSION" "$@"
           fi

@@ -18,6 +18,19 @@ if [[ ! "$PM3_JOBS" =~ ^[1-9][0-9]*$ ]]; then
     echo "error: PM3_JOBS must be a positive integer." >&2
     exit 1
 fi
+PMUI_VERSION="${PMUI_VERSION:-}"
+if [[ -z "$PMUI_VERSION" ]]; then
+    VERSION_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null || true)"
+    if [[ -n "$VERSION_TAG" ]]; then
+        PMUI_VERSION="$(printf '%s' "$VERSION_TAG" | cut -c 2-)"
+    else
+        PMUI_VERSION="0.1.0"
+    fi
+fi
+if [[ ! "$PMUI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "error: PMUI_VERSION must be a major.minor.patch number." >&2
+    exit 1
+fi
 
 # Where the Iceman client and its data files live. Override with PM3_SRC if your
 # checkout is elsewhere.
@@ -219,7 +232,7 @@ fi
 # ---------------------------------------------------------------------------
 # Info.plist
 # ---------------------------------------------------------------------------
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -230,8 +243,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key><string>ProxmarkUI</string>
     <key>CFBundleDisplayName</key><string>Proxmark UI</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$PMUI_VERSION</string>
+    <key>CFBundleVersion</key><string>$PMUI_VERSION</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
