@@ -1,0 +1,101 @@
+Sources/ProxmarkUI/AppModel+UI.swift
+  s_bcc7dd9f1b0e97::t_5c72f863595062 63-69
+Sources/ProxmarkUI/ScanView.swift
+  s_bcc7dd9f1b0e97::t_24a1b2bd9ff11c 195,197-206,233-254,275-294
+  s_bcc7dd9f1b0e97::t_65bcb3e410cde5 6,16
+Sources/ProxmarkUI/App.swift
+  s_22a848fa6c4ad8::t_78040b0756b760 2,17
+  s_22a848fa6c4ad8::t_21dbd95db92c18 63,65,67-71,118-119,121-123,131-132
+  s_bcc7dd9f1b0e97::t_bdc0dfe5e7d5b8 40
+  s_22a848fa6c4ad8::t_c10dc1040f1dc5 55,60-62,64,82,120,125-130
+  s_22a848fa6c4ad8::t_db0dc314801583 57-59
+  s_22a848fa6c4ad8::t_7f28e0076dc560 79
+  s_22a848fa6c4ad8::t_0af9d92b8208ef 66,83-85,124
+  s_22a848fa6c4ad8::t_aa7eed1e86ba7a 37,41,80-81,86-89,108-111
+  s_bcc7dd9f1b0e97::t_c11a6995116646 53
+  s_22a848fa6c4ad8::t_023a8c0fbd8f20 20-32
+  s_22a848fa6c4ad8::t_43a74f0392b114 56
+Sources/ProxmarkUI/WriteView.swift
+  s_bcc7dd9f1b0e97::t_fd00b7f35b1597 96
+  s_bcc7dd9f1b0e97::t_686534a423483e 215-219,221
+  s_bcc7dd9f1b0e97::t_5861621c9fed6a 343
+  s_bcc7dd9f1b0e97::t_7ca66319b90431 358,361-370,375-376,378-385,390-391,393-401,416-423
+  s_bcc7dd9f1b0e97::t_24f0fbc0f5185d 178-183,185
+  s_bcc7dd9f1b0e97::t_2ed755d9542908 402-415
+  s_bcc7dd9f1b0e97::t_7a29691885d017 332
+  s_bcc7dd9f1b0e97::t_e8efcc2e95fdb0 359
+  s_bcc7dd9f1b0e97::t_e985f4bc87b01a 58,64,71-73
+  s_bcc7dd9f1b0e97::t_a2899d06e44bec 371-374,377,386-389,392
+  s_bcc7dd9f1b0e97::t_998bd9f29850fb 21,23-33
+  s_bcc7dd9f1b0e97::t_4306c6dc13d101 427-493
+  s_bcc7dd9f1b0e97::t_ed26a47847f7f4 268,270
+  s_bcc7dd9f1b0e97::t_6a886a06fcfb21 12-14
+  s_bcc7dd9f1b0e97::t_a50d17c2ac37f0 101,107,115,117-118,128-160
+  s_bcc7dd9f1b0e97::t_5a626671208cd9 305
+  s_bcc7dd9f1b0e97::t_0a224ecc8a2bab 316
+  s_bcc7dd9f1b0e97::t_273fa5be4cecbd 22,35-37,41-54
+  s_bcc7dd9f1b0e97::t_77f93b206fed5f 9,11
+  s_bcc7dd9f1b0e97::t_33ad8534911cd8 228,230-232,235-238,241-267,269,271-276,281
+Sources/ProxmarkUI/TagLibrary.swift
+  s_bcc7dd9f1b0e97::t_401f2da6cd5ef1 1-115
+Sources/ProxmarkUI/RootView.swift
+  s_bcc7dd9f1b0e97::t_b6e0824b81d155 37
+  s_bcc7dd9f1b0e97::t_f437d41dde8841 20
+  s_bcc7dd9f1b0e97::t_de00949a145877 51
+Sources/ProxmarkUI/SavedTag.swift
+  s_bcc7dd9f1b0e97::t_40bf2024f4f470 1-70
+Sources/ProxmarkUI/LibraryView.swift
+  s_bcc7dd9f1b0e97::t_43d5a71146ae0b 218,221,225,239-324
+  s_bcc7dd9f1b0e97::t_fe08c2025dffc5 169-190,195-196
+  s_bcc7dd9f1b0e97::t_ad1a31ee5a5d99 4-9,12,14,18-29,31-32,36,41-43,48-49,51-52,68-80,82-94,96-110,112,115-125
+Sources/ProxmarkUI/SoftwareUpdateView.swift
+  s_22a848fa6c4ad8::t_c685816c559994 40-45
+  s_22a848fa6c4ad8::t_ac11f4762eab83 345,347-355,540-542
+  s_22a848fa6c4ad8::t_e73446d5daf65c 245-247
+  s_22a848fa6c4ad8::t_46f997ba93b65b 16,52,160-167,169,173-175,177-178,180,182-183,186-187,190-192,204-210,217-218,274,373,428,436,439,456-471,473-475,478-503,517,543-545,549,558-561,566,568-570,573,593
+  s_22a848fa6c4ad8::t_f07e61bc9988a3 449-453
+  s_22a848fa6c4ad8::t_c33631b247b533 24,29-30,81,136-140,151-158
+  s_22a848fa6c4ad8::t_86f6f0b1862d12 319
+  s_22a848fa6c4ad8::t_317a47299319e5 511,531-535
+  s_22a848fa6c4ad8::t_13029c12bae9ef 9,168,181,185
+  s_22a848fa6c4ad8::t_8c2dc8e727c38e 31,69-80,141-150
+  s_22a848fa6c4ad8::t_113f475dfacd0c 243,253-254
+  s_22a848fa6c4ad8::t_1ede1c31ade6e4 275
+  s_22a848fa6c4ad8::t_28d90f554c7492 294-318,320,322-323
+  s_22a848fa6c4ad8::t_7b86137c80212e 244,248-252,276,291-293,321,324-339
+  s_22a848fa6c4ad8::t_da445d4d9e4d1b 271,277-290
+  s_22a848fa6c4ad8::t_bc2298f04c9a40 33-34,170-172,176,179,184,193-203
+  s_22a848fa6c4ad8::t_286e19a2a1a7d6 23,28,112-117,130-135
+  s_22a848fa6c4ad8::t_d5714fca1a40b2 92
+  s_22a848fa6c4ad8::t_a76762c41757e9 522-530
+  s_22a848fa6c4ad8::t_f155bc15809664 67-68
+  s_22a848fa6c4ad8::t_2da89c1075d817 1-8,10-15,19-22,25-27,36-39,46-51,55-65,88-91,93-111,118-122,124-129,159,211-214,216,219-242,255-270,272-273,340-344,346,356-372,374,376-377,379-387,405-410,412-427,429-435,437-438,440-448,504-510,512-516,518-521,536-539,547-548,562-565,567,571-572,574-584,587-592,594-595,598-601
+  s_22a848fa6c4ad8::t_e53d2f695e84b1 32,66,82-87,411
+  s_22a848fa6c4ad8::t_ac208c31abf91e 35,189
+  s_22a848fa6c4ad8::t_c63652bfc018e2 215,454-455,472,476-477
+  s_22a848fa6c4ad8::t_d75a4a1c1e75fb 17-18,53-54,123,188,375,378,388-404,546,550-557,585-586,596-597
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "20ab42aa587c83d56d8ee619bf468e3a430c5703",
+  "prompts": {},
+  "sessions": {
+    "s_22a848fa6c4ad8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15106-4dc2-7783-bdfb-d47072c77d7d",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Claudio Fuentes <imclaudfuen@gmail.com>"
+    },
+    "s_bcc7dd9f1b0e97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c937d09b-0a73-4cf0-9002-cdf6c282183f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Claudio Fuentes <imclaudfuen@gmail.com>"
+    }
+  }
+}
