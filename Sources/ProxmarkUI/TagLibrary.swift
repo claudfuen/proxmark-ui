@@ -60,7 +60,13 @@ final class TagLibrary: ObservableObject {
     }
 
     func delete(_ tag: SavedTag) {
-        try? FileManager.default.removeItem(at: fileURL(for: tag))
+        if !Self.isDemo {
+            let file = fileURL(for: tag)
+            if FileManager.default.fileExists(atPath: file.path) {
+                do { try FileManager.default.removeItem(at: file) }
+                catch { return }
+            }
+        }
         tags.removeAll { $0.id == tag.id }
     }
 

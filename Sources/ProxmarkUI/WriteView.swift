@@ -142,8 +142,14 @@ struct WriteView: View {
                 continue
             }
             phase = .busy(step: "Reading back", attempt: attempt, total: total)
+            let previousResultID = app.lastResult?.id
             await app.scan(family: family)
-            if let read = app.lastResult, matches(read) {
+            // A failed scan leaves the previous result visible in Scan. Only a
+            // fresh, successful read can verify the write we just made.
+            if app.lastError == nil,
+               let read = app.lastResult,
+               read.id != previousResultID,
+               matches(read) {
                 phase = .verified(name: name, attempt: attempt, total: total)
                 return
             }
@@ -368,7 +374,7 @@ struct WriteView: View {
             VStack(alignment: .leading, spacing: 8) {
                 commandPreview((try? Commands.em410xClone(id: id)) ?? "")
                 Button {
-                    pending = .init(summary: "Write \(tag.name) \u{2014} EM410x \(id) \u{2014} onto a blank T5577") {
+                    pending = .init(summary: "Write \(tag.name), EM410x \(id), onto a blank T5577") {
                         await writeAndVerify(name: tag.name, family: .lf,
                             write: { await app.writeEM410x(id: id) },
                             matches: { $0.isEM410x && $0.uid.uppercased() == id.uppercased() })
@@ -383,7 +389,7 @@ struct WriteView: View {
             VStack(alignment: .leading, spacing: 8) {
                 commandPreview((try? Commands.hidClone(facility: facility, card: card)) ?? "")
                 Button {
-                    pending = .init(summary: "Write \(tag.name) \u{2014} HID Prox \(facility)/\(card) \u{2014} onto a blank T5577") {
+                    pending = .init(summary: "Write \(tag.name), HID Prox \(facility)/\(card), onto a blank T5577") {
                         await writeAndVerify(name: tag.name, family: .lf,
                             write: { await app.writeHID(facility: facility, card: card) },
                             matches: { hidMatch($0, facility: facility, card: card) })
@@ -401,16 +407,17 @@ struct WriteView: View {
 
     /// A read-back is an HID match when the family and both numbers agree.
     private func hidMatch(_ read: ScanResult, facility: String, card: String) -> Bool {
-        guard read.isHID else { return false }
+        guard read.isHID,
+              read.details.first(where: { $0.label.caseInsensitiveCompare("Format") == .orderedSame })?.value.uppercased() == "H10301",
+              let expectedFacility = Int(facility),
+              let expectedCard = Int(card) else { return false }
         func number(_ labelFragment: String) -> String? {
             read.details.first { $0.label.localizedCaseInsensitiveContains(labelFragment) }?.value
         }
-        let fc = number("facility")
-        let cn = number("card")
-        if let fc, let cn { return fc == facility && cn == card }
-        // Some client builds print a single "FC / CN" line instead.
-        if let combined = number("fc") { return combined.contains(facility) && combined.contains(card) }
-        return false
+        // The Iceman parser provides separate numeric fields. A substring
+        // match could call FC 157 a match for FC 57, so never use one here.
+        guard let fc = number("facility"), let cn = number("card") else { return false }
+        return Int(fc) == expectedFacility && Int(cn) == expectedCard
     }
 
     private func commandPreview(_ cmd: String) -> some View {

@@ -59,10 +59,12 @@ struct SavedTag: Codable, Equatable, Identifiable, Hashable {
             return .em410x(id: scan.uid.uppercased())
         }
         if scan.isHID,
+           scan.details.first(where: { $0.label.caseInsensitiveCompare("Format") == .orderedSame })?.value.uppercased() == "H10301",
            let fc = scan.details.first(where: { $0.label.localizedCaseInsensitiveContains("facility") })?.value,
            let cn = scan.details.first(where: { $0.label.localizedCaseInsensitiveContains("card") })?.value,
            fc.range(of: #"^\d+$"#, options: .regularExpression) != nil,
-           cn.range(of: #"^\d+$"#, options: .regularExpression) != nil {
+           cn.range(of: #"^\d+$"#, options: .regularExpression) != nil,
+           (try? Commands.hidClone(facility: fc, card: cn)) != nil {
             return .hid(facility: fc, card: cn)
         }
         return .none(reason: "This app can't write a \(scan.kind) tag yet. Its details are kept for reference.")

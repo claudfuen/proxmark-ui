@@ -73,6 +73,8 @@ Proxmark is a native Mac app for the everyday Proxmark3 jobs: scan a tag, see wh
 - **Firmware updates for Proxmark3 Easy and RDV4**, with a required check of your exact model before anything is written. [More below](#hardware-and-firmware).
 - **Built for the Mac.** SwiftUI throughout, light and dark mode, keyboard shortcuts, a Settings window, and a live clock on long reads so a multi-minute key recovery never looks frozen.
 - **Hot-plug aware.** The app notices when a reader appears or disappears over USB and reconnects on its own.
+- **A library you can use.** Save scanned EM410x and HID identities with names, then select a saved tag or dump from the Write screen. Identity writes read the tag back and report whether the result matches.
+- **Mac app updates in the app.** A daily check and a **Check for Updates…** menu item keep the app and its bundled client current.
 
 ## Get started
 
@@ -83,6 +85,14 @@ You need a Mac with Apple silicon running macOS 13 or later, a Proxmark3 support
 3. **Plug in your Proxmark3.** The app finds the serial port and checks the firmware. Pick a band in Scan and hold a tag to the antenna.
 
 Advanced users can choose **Reader > Locate Client…** to run a different Iceman build. The choice is saved on this Mac and takes priority over the bundled client.
+
+### Keep the Mac app up to date
+
+The app checks GitHub releases once a day by default and offers a one-time update prompt when a newer version is available. Choose **Proxmark > Check for Updates…** at any time to check manually or turn automatic checks off. **Download and Install** verifies the release ZIP, prepares the new app, and reopens it after replacing the installed copy. The previous copy is kept as a backup, and a failed launch restores it. Install the app in a writable location such as `~/Applications` for in-app installation. Versions before 0.1.2 need one manual download from [Releases](https://github.com/claudfuen/proxmark-ui/releases) before they gain this feature.
+
+<img src="docs/images/software-update-current.jpg" alt="The app's Software Update window with the automatic check setting and a current version result" width="520">
+
+Mac app updates include the matching Iceman client and firmware images. They do not flash the connected reader. Current releases are ad hoc signed and not notarized. GitHub's SHA-256 digest and the code signature check detect damaged or altered downloads, but they do not independently prove publisher identity. macOS may require **Open Anyway** when the updated app launches.
 
 ### Keyboard shortcuts
 
@@ -137,7 +147,7 @@ PM3_SRC=~/Repos/proxmark3 ./scripts/make-app.sh
 open dist/ProxmarkUI.app
 ```
 
-`swift build` gives you a development executable. `scripts/make-app.sh` builds a release app in `dist/ProxmarkUI.app` with the Iceman client, its dynamic libraries, dictionaries, scripts and resources, and the Easy and RDV4 firmware images. It builds each image from `PM3_SRC` (default `~/Repos/_vendor/proxmark3`), checks the client and images against that source revision, verifies the Easy package fits 256 KB, and never bundles a bootloader. The current public ZIP is ad hoc signed and may require a manual first-launch allowance on some Macs. Developer ID signing and notarization are needed before the app can install future updates automatically with reliable publisher verification.
+`swift build` gives you a development executable. `scripts/make-app.sh` builds a release app in `dist/ProxmarkUI.app` with the Iceman client, its dynamic libraries, dictionaries, scripts and resources, and the Easy and RDV4 firmware images. It builds each image from `PM3_SRC` (default `~/Repos/_vendor/proxmark3`), checks the client and images against that source revision, verifies the Easy package fits 256 KB, and never bundles a bootloader. The current public ZIP is ad hoc signed and may require a manual first-launch allowance on some Macs. Developer ID signing and notarization would provide reliable publisher verification for future releases.
 
 The [release workflow](.github/workflows/macos-release.yml) runs the tests, builds Iceman at pinned revision `693ead08038c6ade43833579306e98eb3dd18d8e`, packages and verifies the app, and attaches the source and checksums to versioned releases. [`scripts/package-release.sh`](scripts/package-release.sh) produces the same assets locally.
 
@@ -171,7 +181,7 @@ Iceman proxmark3 client  (bundled in the app)
 Proxmark3 reader
 ```
 
-`ProxmarkKit` starts a fresh Iceman client process for each batch of commands, with a timeout, so a stuck reader can never wedge the app. Every value is validated before it reaches the client's command line. Saved dumps and their metadata live in `~/.proxmark3/ui/dumps`. Scan history covers the current session only; it isn't a tag database. Anything the app doesn't expose is still available in the full Iceman CLI.
+`ProxmarkKit` starts a fresh Iceman client process for each batch of commands, with a timeout, so a stuck reader can never wedge the app. Every value is validated before it reaches the client's command line. Saved dumps and their metadata live in `~/.proxmark3/ui/dumps`; saved identity tags live in `~/.proxmark3/ui/saved-tags`. Scan history covers the current session, while saved Library entries persist across launches. Anything the app doesn't expose is still available in the full Iceman CLI.
 
 ## Troubleshooting
 
